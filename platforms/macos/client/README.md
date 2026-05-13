@@ -60,6 +60,24 @@ make build    # 等同 bash scripts/build.sh
 make install  # 等同 INSTALL_TO_APPLICATIONS=1 LAUNCH_AFTER_INSTALL=1 bash scripts/build.sh
 ```
 
+### 测试
+
+```bash
+swift test
+```
+
+当前测试优先覆盖不依赖硬件的逻辑：BLE 协议帧、响应解析、Studio 配置同步和 OLED 槽位规划。
+
+### 参与贡献
+
+- 本地开发流程见 [DEVELOPMENT.md](./DEVELOPMENT.md)
+- 贡献流程见 [CONTRIBUTING.md](./CONTRIBUTING.md)
+- 架构说明见 [ARCHITECTURE.md](./ARCHITECTURE.md)
+- 目录职责见 [docs/module-map.md](./docs/module-map.md)
+- 安全问题报告见 [SECURITY.md](./SECURITY.md)
+
+开源许可证尚未在仓库中声明；发布前请先选择并添加 `LICENSE`。
+
 ### 代码签名
 
 `scripts/build.sh` 会自动查找本机的 Developer ID Application 或 Apple Development 证书。如需指定：
@@ -99,12 +117,19 @@ ahakeyconfig/
 │   │   ├── AhaKeyProtocol.swift           # ★ 协议编解码（帧格式、命令、HID 键码表）
 │   │   └── AhaKeyBLEManager.swift         # ★ CoreBluetooth 通信管理器
 │   ├── Views/
-│   │   ├── ContentView.swift              # Tab 容器
-│   │   ├── DeviceInfoView.swift           # 设备信息 + LED 测试 + BLE 日志
-│   │   ├── KeyMappingView.swift           # 键位映射配置 + 预设方案
-│   │   └── OLEDManagerView.swift          # OLED 图片/GIF 管理
+│   │   ├── App/                           # App 壳层与根工作区
+│   │   ├── Studio/                        # AhaKey Studio（Core/Shell/Canvas/Workspaces/Controls/Sheets）
+│   │   ├── Workbench/                     # 工作台与按键配置页面
+│   │   ├── Device/                        # 设备信息、键位映射、OLED 管理
+│   │   ├── Voice/                         # VoiceAgent、LLM 配置、语音 HUD
+│   │   └── Feishu/                        # 飞书设置与联系人配置
 │   ├── Utilities/
-│   │   └── AgentManager.swift             # LaunchAgent 守护进程管理 + Claude hooks 安装
+│   │   ├── Agent/                         # LaunchAgent 守护进程管理 + hooks 安装
+│   │   ├── Audio/                         # macOS 原生语音转写
+│   │   ├── OLED/                          # OLED 资源、编码和上传槽位规划
+│   │   ├── Studio/                        # Studio 配置同步/命令生成
+│   │   ├── System/                        # 系统/调试签名辅助
+│   │   └── Voice/                         # 语音按键路由、会话与模型状态
 │   └── Agent/
 │       ├── AhaKeyAgent.swift              # 轻量 BLE 守护进程（Unix socket 接收状态命令）
 │       └── main.swift                     # Agent 入口
@@ -121,7 +146,7 @@ ahakeyconfig/
 | `Sources/BLE/AhaKeyBLEManager.swift` | 直接 CoreBluetooth 通信，自动扫描/连接/重连，写入队列防过载 |
 | `docs/ble-protocol.md` | 协议完整文档（从原厂工具反编译 + 抓包验证） |
 | `Sources/Agent/AhaKeyAgent.swift` | 后台守护进程，通过 Unix socket 接收 LED 状态命令 |
-| `Sources/Utilities/AgentManager.swift` | Claude Code hooks 自动安装/卸载（追加模式，不覆盖已有 hooks） |
+| `Sources/Utilities/Agent/AgentManager.swift` | Claude Code hooks 自动安装/卸载（追加模式，不覆盖已有 hooks） |
 
 ---
 

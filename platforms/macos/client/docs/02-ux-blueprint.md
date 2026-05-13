@@ -9,8 +9,8 @@
 
 当前原生实现入口：
 
-- [ContentView.swift](../Sources/Views/ContentView.swift)
-- [AhaKeyStudioView.swift](../Sources/Views/AhaKeyStudioView.swift)
+- [ContentView.swift](../Sources/Views/App/ContentView.swift)
+- [AhaKeyStudioView.swift](../Sources/Views/Studio/Core/AhaKeyStudioView.swift)
 - [AhaKeyStudioModels.swift](../Sources/Models/AhaKeyStudioModels.swift)
 
 ## 1. 文档目的

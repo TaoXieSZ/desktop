@@ -8,10 +8,14 @@ let package = Package(
     ],
     products: [
         .executable(name: "AhaKeyConfig", targets: ["AhaKeyConfig"]),
+        .executable(name: "AhaKeyNotchSmoke", targets: ["AhaKeyNotchSmoke"]),
         .library(name: "AhaKeyConfigUI", targets: ["AhaKeyConfigUI"]),
         .executable(name: "ahakeyconfig-agent", targets: ["AhaKeyConfigAgent"]),
         .library(name: "VoiceAgent", targets: ["VoiceAgent"]),
         .executable(name: "VoiceAgentLiveSession", targets: ["VoiceAgentLiveSession"]),
+    ],
+    dependencies: [
+        .package(url: "https://github.com/MrKai77/DynamicNotchKit", from: "1.0.0"),
     ],
 
     targets: [
@@ -34,9 +38,13 @@ let package = Package(
         ),
         .executableTarget(
             name: "AhaKeyConfig",
-            dependencies: ["AhaKeyConfigUI", "VoiceAgent"],
+            dependencies: [
+                "AhaKeyConfigUI",
+                "VoiceAgent",
+                .product(name: "DynamicNotchKit", package: "DynamicNotchKit"),
+            ],
             path: "Sources",
-            exclude: ["Agent", "AhaKeyConfigUI", "VoiceAgent", "VoiceAgentLiveSession"],
+            exclude: ["Agent", "AhaKeyConfigUI", "VoiceAgent", "VoiceAgentLiveSession", "AhaKeyNotchSmoke"],
             // 与 scripts/build.sh 中 Info.plist 一致。嵌入 __info_plist 段后 TCC 可识别。
             // Debug 使用单独 plist：系统在「隐私与安全性」列表中显示为「AhaKey Studio（调试）」，与正式包区分。
             linkerSettings: [
@@ -57,6 +65,18 @@ let package = Package(
         .executableTarget(
             name: "AhaKeyConfigAgent",
             path: "Sources/Agent"
+        ),
+        .executableTarget(
+            name: "AhaKeyNotchSmoke",
+            dependencies: [
+                .product(name: "DynamicNotchKit", package: "DynamicNotchKit"),
+            ],
+            path: "Sources/AhaKeyNotchSmoke"
+        ),
+        .testTarget(
+            name: "AhaKeyConfigTests",
+            dependencies: ["AhaKeyConfig"],
+            path: "Tests/AhaKeyConfigTests"
         ),
     ]
 )

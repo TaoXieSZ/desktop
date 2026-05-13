@@ -127,7 +127,7 @@ enum AhaKeyStudioPart: String, CaseIterable, Codable, Identifiable {
             .reject
         case .key4:
             .submit
-        default:
+        case .lightBar, .oledDisplay, .toggleSwitch:
             nil
         }
     }
@@ -614,17 +614,17 @@ struct MacroStep: Codable, Equatable, Identifiable {
     }
 
     init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-        self.action = try c.decode(MacroAction.self, forKey: .action)
-        self.param = try c.decodeIfPresent(UInt8.self, forKey: .param) ?? 0
+        let container: KeyedDecodingContainer<MacroStep.CodingKeys> = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.action = try container.decode(MacroAction.self, forKey: .action)
+        self.param = try container.decodeIfPresent(UInt8.self, forKey: .param) ?? 0
     }
 
     func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(id, forKey: .id)
-        try c.encode(action, forKey: .action)
-        try c.encode(param, forKey: .param)
+        var container: KeyedEncodingContainer<MacroStep.CodingKeys> = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(action, forKey: .action)
+        try container.encode(param, forKey: .param)
     }
 
     /// 渲染成 `↓` / `Enter` / `+5ms`… 这样的人类可读片段，inspector 和 summary 都用。
@@ -646,7 +646,7 @@ struct MacroStep: Codable, Equatable, Identifiable {
 }
 
 extension Array where Element == MacroStep {
-    /// 展平成 (action, param, action, param, ...) 字节流，长度 = 2 × 步数。
+    /// Mark: 展平成 (action, param, action, param, ...) 字节流，长度 = 2 × 步数。
     /// 固件上限 98 字节 ≈ 49 步；这里不做截断，由调用方检查/提示。
     var flattenedBytes: [UInt8] {
         flatMap { [$0.action.rawValue, $0.param] }
@@ -707,7 +707,7 @@ struct AhaKeyKeyDraft: Codable, Equatable, Identifiable {
     }
 
     init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let c: KeyedDecodingContainer<AhaKeyKeyDraft.CodingKeys> = try decoder.container(keyedBy: CodingKeys.self)
         self.role = try c.decode(AhaKeyKeyRole.self, forKey: .role)
         self.shortcut = try c.decode(ShortcutBinding.self, forKey: .shortcut)
         self.macro = try c.decodeIfPresent([MacroStep].self, forKey: .macro) ?? []
@@ -716,7 +716,7 @@ struct AhaKeyKeyDraft: Codable, Equatable, Identifiable {
     }
 
     func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
+        var c: KeyedEncodingContainer<AhaKeyKeyDraft.CodingKeys> = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(role, forKey: .role)
         try c.encode(shortcut, forKey: .shortcut)
         if !macro.isEmpty {
