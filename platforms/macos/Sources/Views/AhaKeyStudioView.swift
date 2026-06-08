@@ -23,6 +23,7 @@ struct AhaKeyStudioView: View {
     // AhaKeyStudio 交还蓝牙给 Agent 的过渡期：保持"已连接"显示，直到 Agent 接管或超时。
     @State private var isTransitioningToKeyboardControl = false
     @State private var showsOLEDPlaybackPreview = false
+    @State private var codexOLEDHUDLines: [String]?
     @State private var showsDeviceInfo = false
     @State private var showsCloudAccount = false
     @State private var showsAhaTypeLoginRequiredToast = false
@@ -63,6 +64,18 @@ struct AhaKeyStudioView: View {
             applyCursorRejectMacroSelfHealIfNeeded()
             voiceRelay.updateRoutes(from: studioDraft)
             SwitchStateNotifier.shared.bind(to: bleManager)
+            CodexOLEDStatusFileBridge.shared.onPayloadLinesChanged = { lines in
+                codexOLEDHUDLines = lines
+            }
+            CodexOLEDStatusFileBridge.shared.start(bleManager: bleManager)
+            refreshCodexOLEDHUDPreview()
+            if agentManager.bluetoothConnectionOwner == .ahaKeyStudio {
+                bleManager.userInitiatedConnect()
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    CodexOLEDStatusFileBridge.shared.start(bleManager: bleManager)
+                }
+            }
             NotificationCenter.default.post(
                 name: .ahaKeyKeyboardWorkModeChanged,
                 object: nil,
@@ -79,6 +92,9 @@ struct AhaKeyStudioView: View {
             if let slot = AhaKeyModeSlot(rawValue: newValue), slot != selectedMode {
                 selectedMode = slot
             }
+        }
+        .onChange(of: bleManager.isConnected) { _ in
+            CodexOLEDStatusFileBridge.shared.start(bleManager: bleManager)
         }
         .alert("Agent", isPresented: Binding(
             get: { agentManager.agentUserAlert != nil },
@@ -869,7 +885,10 @@ struct AhaKeyStudioView: View {
                             .fill(Color.black.opacity(0.9))
                             .frame(height: 140)
 
-                        if let image = currentOLEDPreviewImage {
+                        if let lines = codexOLEDHUDLines {
+                            CodexOLEDHUDPreview(lines: lines)
+                                .frame(width: 280, height: 112)
+                        } else if let image = currentOLEDPreviewImage {
                             Image(nsImage: image)
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
@@ -880,9 +899,9 @@ struct AhaKeyStudioView: View {
                                 Image(systemName: "photo.artframe")
                                     .font(.system(size: 28))
                                     .foregroundStyle(.white.opacity(0.8))
-                                Text("当前仅支持动图")
+                                Text("等待 Codex HUD")
                                     .foregroundStyle(.white.opacity(0.85))
-                                Text("文字、token、模型状态显示开发中")
+                                Text("模型、context、本轮 token 会在 hook 后刷新")
                                     .font(.caption)
                                     .foregroundStyle(.white.opacity(0.55))
                             }
@@ -1236,6 +1255,51 @@ struct AhaKeyStudioView: View {
     private var currentOLEDPreviewImage: NSImage? {
         guard let path = currentModeDraft.oled.localAssetPath else { return nil }
         return NSImage(contentsOfFile: path)
+    }
+
+    private var codexOLEDStatusURL: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
+        return base.appendingPathComponent("AhaKeyConfig/codex-oled-status.json")
+    }
+
+    private func refreshCodexOLEDHUDPreview() {
+        guard let data = try? Data(contentsOf: codexOLEDStatusURL),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            codexOLEDHUDLines = nil
+            return
+        }
+
+        let rawLines = obj["lines"] as? [String]
+        let fallbackLines = [
+            [obj["model"] as? String, obj["reasoning"] as? String].compactMap { $0 }.joined(separator: " "),
+            (obj["contextLeftPercent"] as? Int).map { "Context \($0)% left" } ?? "Context -- left",
+            (obj["turnTokens"] as? Int).map { "Turn \(Self.formatCodexTokenCount($0)) tok" } ?? "Turn -- tok",
+        ]
+        let lines = (rawLines ?? fallbackLines)
+            .prefix(3)
+            .map { Self.truncateCodexHUDLine($0.isEmpty ? "--" : $0, maxLength: 22) }
+        codexOLEDHUDLines = lines.count == 3 ? Array(lines) : nil
+    }
+
+    private static func formatCodexTokenCount(_ value: Int) -> String {
+        let absValue = abs(value)
+        if absValue >= 1_000_000 {
+            return String(format: "%.1fM", Double(value) / 1_000_000.0)
+        }
+        if absValue >= 1_000 {
+            return String(format: "%.1fK", Double(value) / 1_000.0)
+        }
+        return "\(value)"
+    }
+
+    private static func truncateCodexHUDLine(_ text: String, maxLength: Int) -> String {
+        let ascii = text.unicodeScalars.map { scalar -> Character in
+            scalar.isASCII && !CharacterSet.controlCharacters.contains(scalar) ? Character(scalar) : "?"
+        }
+        let clean = String(ascii).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard clean.count > maxLength else { return clean }
+        return String(clean.prefix(max(1, maxLength - 1))) + "~"
     }
 
     private var currentOLEDAssetURL: URL? {
@@ -3180,6 +3244,35 @@ private struct DraggableAnimatedGIFPreview: View {
             width: min(max(proposed.width, -maxX), maxX),
             height: min(max(proposed.height, -maxY), maxY)
         )
+    }
+}
+
+private struct CodexOLEDHUDPreview: View {
+    let lines: [String]
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.black)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                )
+
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(lines.prefix(3).enumerated()), id: \.offset) { index, line in
+                    Text(line)
+                        .font(.system(size: index == 0 ? 16 : 14, weight: index == 0 ? .semibold : .medium, design: .monospaced))
+                        .foregroundStyle(index == 0 ? Color.white : Color.white.opacity(0.82))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+        }
+        .accessibilityLabel(lines.joined(separator: ", "))
     }
 }
 

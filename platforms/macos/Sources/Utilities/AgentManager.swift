@@ -134,8 +134,13 @@ final class AgentManager: ObservableObject {
     }
 
     init() {
-        bluetoothConnectionOwner = .agentDaemon
-        UserDefaults.standard.set(BluetoothConnectionOwner.agentDaemon.rawValue, forKey: Self.bluetoothOwnerKey)
+        if let storedOwner = UserDefaults.standard.string(forKey: Self.bluetoothOwnerKey),
+           let owner = BluetoothConnectionOwner(rawValue: storedOwner) {
+            bluetoothConnectionOwner = owner
+        } else {
+            bluetoothConnectionOwner = .agentDaemon
+            UserDefaults.standard.set(BluetoothConnectionOwner.agentDaemon.rawValue, forKey: Self.bluetoothOwnerKey)
+        }
         refresh()
     }
 
@@ -149,9 +154,10 @@ final class AgentManager: ObservableObject {
         codexHooksInstalled = detectCodexHooksInstalled()
         hooksInstalled = claudeHooksInstalled || cursorHooksInstalled || codexHooksInstalled
         if isRunning {
+            let socketPath = socketPath
             DispatchQueue.global(qos: .utility).async { [weak self] in
                 guard let self else { return }
-                let bleConnected = self.querySocketBLEConnected()
+                let bleConnected = Self.querySocketBLEConnected(socketPath: socketPath)
                 DispatchQueue.main.async { self.isAgentBLEConnected = bleConnected }
             }
         } else {
@@ -161,7 +167,7 @@ final class AgentManager: ObservableObject {
 
     /// 向 agent socket 发 status 命令，switchState 非 null 即代表 BLE 已连上键盘。
     /// 同步执行，需在后台线程调用。
-    private func querySocketBLEConnected() -> Bool {
+    nonisolated private static func querySocketBLEConnected(socketPath: String) -> Bool {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { return false }
         defer { close(fd) }

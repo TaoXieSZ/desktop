@@ -58,6 +58,7 @@ enum HookClient {
 
     private static let socketPath = "/tmp/ahakey.sock"
     private static let stateRequestTimeout: Double = 2.0
+    private static let oledStatusRequestTimeout: Double = 0.35
     /// 读拨杆 + BLE 可能略慢，批准路径单独放宽。
     private static let permissionRequestTimeout: Double = 5.0
 
@@ -107,12 +108,14 @@ enum HookClient {
         let ctx = parseStdinContext(stdinData, label: "Codex")
         let request: [String: Any] = ["cmd": "state", "value": Int(stateValue)]
         let reply = sendJsonRequest(request, timeout: stateRequestTimeout)
+        let oledReply = sendCodexOLEDStatus(stdinData: stdinData, event: codexAgentEventName(forStateValue: stateValue))
         appendCodexHookLog(
             hookEvent: ctx["hook_event_name"] as? String,
             agentEvent: codexAgentEventName(forStateValue: stateValue),
             stateValue: stateValue,
             toolContext: ctx,
             reply: reply,
+            oledReply: oledReply,
             switchState: intValue(reply?["switchState"]),
             decision: nil
         )
@@ -237,6 +240,7 @@ enum HookClient {
             stateValue: permissionLedValue,
             toolContext: ctx,
             reply: reply,
+            oledReply: sendCodexOLEDStatus(stdinData: stdinData, event: "CodexPermissionRequest"),
             switchState: switchState,
             decision: isAuto ? "allow" : "pass_through"
         )
@@ -291,6 +295,7 @@ enum HookClient {
         stateValue: UInt8,
         toolContext: [String: Any],
         reply: [String: Any]?,
+        oledReply: [String: Any]? = nil,
         switchState: Int?,
         decision: String?
     ) {
@@ -305,9 +310,13 @@ enum HookClient {
             "hookEvent": hookEvent ?? NSNull(),
             "stateValue": Int(stateValue),
             "agentReply": reply == nil ? false : true,
+            "oledReply": oledReply == nil ? false : true,
             "switchState": switchState.map { $0 } ?? NSNull(),
             "tool": toolContext,
         ]
+        if let oledReply {
+            lineObj["oled"] = privacySafeOLEDReply(oledReply)
+        }
         if let decision { lineObj["decision"] = decision }
 
         guard let data = try? JSONSerialization.data(withJSONObject: lineObj, options: []),
@@ -334,6 +343,34 @@ enum HookClient {
         }
         if out["tool_name"] == nil, let t = obj["name"] as? String {
             out["name"] = t
+        }
+        return out
+    }
+
+    private static func sendCodexOLEDStatus(stdinData: Data, event: String) -> [String: Any]? {
+        let status = CodexOLEDStatus.fromHookStdin(stdinData, event: event)
+        writeCodexOLEDStatusFile(status)
+        return sendJsonRequest(status.socketPayload(), timeout: oledStatusRequestTimeout)
+    }
+
+    private static func writeCodexOLEDStatusFile(_ status: CodexOLEDStatus) {
+        var payload = status.socketPayload()
+        payload["updatedAt"] = diagnosticTimestampFormatter.string(from: Date())
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
+        let dir = base.appendingPathComponent("AhaKeyConfig", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("codex-oled-status.json")
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]) else { return }
+        try? data.write(to: url, options: [.atomic])
+    }
+
+    private static func privacySafeOLEDReply(_ reply: [String: Any]) -> [String: Any] {
+        var out: [String: Any] = [:]
+        for key in ["ok", "queued", "skipped", "reason", "displayKey", "event", "mode"] {
+            if let value = reply[key] {
+                out[key] = stringifyDebugValue(value, maxLen: 120)
+            }
         }
         return out
     }

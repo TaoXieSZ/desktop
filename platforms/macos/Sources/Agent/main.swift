@@ -31,5 +31,5 @@ agent.onLog = { msg in
 }
 agent.startSocketListener()
 
-// 保持运行
+// 保持运行；agent 内部用独立 BLE 队列，主线程保留 CFRunLoop 给系统框架。
 RunLoop.main.run()

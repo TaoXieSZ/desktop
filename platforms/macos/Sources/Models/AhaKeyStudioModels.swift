@@ -350,7 +350,9 @@ enum VoicePreset: String, CaseIterable, Codable, Identifiable {
             "AhaKey Studio 会在后台把语音键的按下/松开转换成 Fn/Globe，便于接入微信语音。"
         case .claudeCode:
             "使用 macOS 原生语音识别，把识别结果以 ⌘V 粘贴到 Claude Code 当前光标位置。按一次开始、再按一次结束。"
-        case .codex, .doubao:
+        case .doubao:
+            "AhaKey Studio 会在后台把语音键的按下/松开转换成 Fn/Globe，便于接入豆包输入法的长按录音。"
+        case .codex:
             "规划中，保留入口。"
         case .custom:
             "直接自己指定底层快捷键。"
@@ -359,7 +361,7 @@ enum VoicePreset: String, CaseIterable, Codable, Identifiable {
 
     var availableInV1: Bool {
         switch self {
-        case .codex, .doubao:
+        case .codex:
             false
         default:
             true

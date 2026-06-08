@@ -1,0 +1,716 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ink: #17201d;
+  --muted: #66756f;
+  --panel: rgba(255, 255, 252, 0.82);
+  --line: rgba(23, 32, 29, 0.12);
+  --mint: #9bd8b5;
+  --teal: #3aa6a0;
+  --sky: #8abdf2;
+  --coral: #ec7d68;
+  --gold: #f2bd4b;
+  --grass: #67ad70;
+  --shadow: 0 24px 70px rgba(44, 67, 59, 0.18);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 1100px;
+  min-height: 100vh;
+  color: var(--ink);
+  background:
+    linear-gradient(135deg, rgba(155, 216, 181, 0.38), transparent 34%),
+    linear-gradient(225deg, rgba(138, 189, 242, 0.42), transparent 36%),
+    #f7f4e8;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: minmax(720px, 1fr) 380px;
+  gap: 24px;
+  min-height: 100vh;
+  padding: 28px;
+}
+
+.workspace,
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.workspace {
+  overflow: hidden;
+  padding: 28px;
+}
+
+.panel {
+  padding: 22px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.eyebrow,
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+.eyebrow {
+  margin-bottom: 6px;
+  color: var(--teal);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+h1 {
+  font-size: 42px;
+  line-height: 1;
+}
+
+h2 {
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+.statusPills {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.statusPills span,
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(23, 32, 29, 0.08);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.green { background: var(--grass); }
+.blue { background: var(--sky); }
+.teal { background: var(--teal); }
+.red { background: var(--coral); }
+
+.modeDock {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.modeButton {
+  min-height: 80px;
+  border: 1px solid rgba(23, 32, 29, 0.08);
+  border-radius: 8px;
+  padding: 14px 16px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 -3px 0 rgba(23, 32, 29, 0.06);
+  text-align: left;
+  transition: transform 160ms ease, background 160ms ease, outline-color 160ms ease;
+}
+
+.modeButton strong,
+.modeButton span {
+  display: block;
+}
+
+.modeButton strong {
+  font-size: 18px;
+}
+
+.modeButton span {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.modeButton:hover {
+  transform: translateY(-1px);
+}
+
+.modeButton.active {
+  background: #dff4e7;
+  outline: 3px solid rgba(58, 166, 160, 0.24);
+}
+
+.deviceStage {
+  display: grid;
+  place-items: center;
+  min-height: 560px;
+}
+
+.keyboardBody {
+  position: relative;
+  width: min(860px, 96%);
+  aspect-ratio: 1.72;
+  border: 1px solid rgba(23, 32, 29, 0.12);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(220, 239, 250, 0.78)),
+    repeating-linear-gradient(45deg, transparent 0 18px, rgba(255, 255, 255, 0.28) 18px 20px);
+  box-shadow: inset 0 -10px 0 rgba(23, 32, 29, 0.06), 0 28px 60px rgba(50, 70, 64, 0.16);
+}
+
+.lightBar {
+  position: absolute;
+  top: 62px;
+  left: 11%;
+  display: grid;
+  grid-template-columns: repeat(4, 86px);
+  gap: 26px;
+  align-items: center;
+  height: 54px;
+  padding: 0 28px;
+  border-radius: 8px;
+  background: rgba(23, 32, 29, 0.08);
+}
+
+.lightBar span {
+  height: 18px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--teal), var(--sky));
+}
+
+.oledWindow {
+  position: absolute;
+  top: 86px;
+  right: 10%;
+  width: 280px;
+  height: 140px;
+  border-radius: 8px;
+  padding: 15px;
+  background: #101514;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.08), 0 16px 30px rgba(0, 0, 0, 0.18);
+}
+
+.oledHud {
+  display: grid;
+  gap: 10px;
+  height: 100%;
+  align-content: center;
+  color: white;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+
+.oledHud span:first-child {
+  color: #eafcff;
+  font-weight: 800;
+}
+
+.oledHud span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.keyTray {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: 70px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(112px, 1fr));
+  gap: 14px;
+  padding: 20px;
+  border-radius: 8px;
+  background: rgba(23, 32, 29, 0.06);
+}
+
+.keyCap {
+  display: grid;
+  grid-template-rows: 42px auto auto;
+  gap: 6px;
+  justify-items: center;
+  min-height: 132px;
+  border: 1px solid rgba(23, 32, 29, 0.08);
+  border-radius: 8px;
+  background: #fffef9;
+  box-shadow: inset 0 -5px 0 rgba(23, 32, 29, 0.07), 0 10px 20px rgba(56, 72, 68, 0.11);
+}
+
+.keyCap.active {
+  background: #fff4dc;
+  outline: 3px solid rgba(242, 189, 75, 0.35);
+}
+
+.keyCap strong {
+  font-size: 17px;
+}
+
+.keyCap span:last-child {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.panelHeader {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.panelHeader p,
+.notice p {
+  color: var(--muted);
+  line-height: 1.5;
+  font-weight: 700;
+}
+
+.card {
+  border: 1px solid rgba(23, 32, 29, 0.08);
+  border-radius: 8px;
+  padding: 18px;
+  background: rgba(255, 254, 249, 0.9);
+  box-shadow: inset 0 -4px 0 rgba(23, 32, 29, 0.05);
+}
+
+.configStack,
+.remapStack {
+  display: grid;
+  gap: 14px;
+}
+
+.remapStack {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(23, 32, 29, 0.1);
+}
+
+.configModeGrid {
+  display: grid;
+  gap: 10px;
+}
+
+.configMode {
+  border: 1px solid rgba(23, 32, 29, 0.08);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--ink);
+  text-align: left;
+  box-shadow: inset 0 -3px 0 rgba(23, 32, 29, 0.05);
+}
+
+.configMode strong,
+.configMode span {
+  display: block;
+}
+
+.configMode span {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.configMode.active {
+  background: #dff4e7;
+  outline: 3px solid rgba(58, 166, 160, 0.2);
+}
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.miniIcon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: #dceffa;
+}
+
+.miniOled {
+  display: grid;
+  gap: 8px;
+  min-height: 96px;
+  align-content: center;
+  border-radius: 8px;
+  padding: 14px;
+  background: #101514;
+  color: white;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+
+.miniOled span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.miniOled span:first-child {
+  color: #eafcff;
+  font-weight: 900;
+}
+
+.controls {
+  display: grid;
+  gap: 16px;
+}
+
+.controls label {
+  display: grid;
+  gap: 8px;
+  font-weight: 900;
+}
+
+.fnWarning {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(242, 189, 75, 0.5);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 244, 220, 0.9);
+}
+
+.fnWarning p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.compactControls label {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.controls select,
+.controls input {
+  width: 100%;
+  border: 1px solid rgba(23, 32, 29, 0.14);
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: white;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.switch {
+  position: relative;
+  width: 58px;
+  height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: #d9ded9;
+}
+
+.switch i {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.18);
+  transition: transform 180ms ease;
+}
+
+.switch.on {
+  background: var(--teal);
+}
+
+.switch.on i {
+  transform: translateX(24px);
+}
+
+.applyButton {
+  width: 100%;
+  margin-top: 14px;
+  border: 0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--ink);
+  color: white;
+  font-weight: 900;
+  box-shadow: 0 12px 24px rgba(23, 32, 29, 0.16);
+}
+
+.applyButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.profileCard {
+  display: grid;
+  gap: 12px;
+}
+
+.profileGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.profileGrid span {
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: rgba(23, 32, 29, 0.06);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.profileActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.profileActions button {
+  border: 0;
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--ink);
+  color: white;
+  font-weight: 900;
+}
+
+.profileActions .dangerButton {
+  background: var(--coral);
+}
+
+.profileActions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.writeButton {
+  grid-column: 1 / -1;
+  border: 0;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--coral);
+  color: white;
+  font-weight: 900;
+  box-shadow: 0 12px 24px rgba(235, 110, 88, 0.18);
+}
+
+.writeButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.notice {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  border: 1px solid rgba(23, 32, 29, 0.08);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.routeCard {
+  display: grid;
+  gap: 8px;
+}
+
+.routeCard p {
+  color: var(--muted);
+  line-height: 1.5;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.routeLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.routeLine span {
+  border-radius: 999px;
+  padding: 8px 10px;
+  background: #e9f7ff;
+  color: #356078;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.routeLine i {
+  width: 18px;
+  height: 2px;
+  background: var(--teal);
+}
+
+.notice.success {
+  border-color: rgba(103, 173, 112, 0.38);
+  background: rgba(235, 248, 237, 0.86);
+}
+
+.notice.error {
+  border-color: rgba(236, 125, 104, 0.4);
+  background: rgba(255, 239, 235, 0.86);
+}
+
+.commandList {
+  display: grid;
+  gap: 10px;
+  margin: 4px 0 0;
+  padding-left: 20px;
+}
+
+.commandList li {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.commandList span {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.commandList code {
+  display: block;
+  overflow-wrap: anywhere;
+  border-radius: 6px;
+  padding: 7px;
+  background: rgba(23, 32, 29, 0.08);
+  color: var(--ink);
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.icon {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 34px;
+}
+
+.icon-check::before {
+  content: "";
+  position: absolute;
+  width: 22px;
+  height: 12px;
+  left: 5px;
+  top: 7px;
+  border-left: 4px solid var(--ink);
+  border-bottom: 4px solid var(--ink);
+  transform: rotate(-45deg);
+}
+
+.icon-key::before {
+  content: "";
+  position: absolute;
+  inset: 9px 4px 7px;
+  border: 3px solid var(--ink);
+  border-radius: 6px;
+}
+
+.icon-key::after {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border: 3px solid var(--ink);
+  border-bottom: 0;
+  border-radius: 9px 9px 0 0;
+}
+
+.icon-screen::before {
+  content: "";
+  position: absolute;
+  inset: 7px 4px 9px;
+  border: 3px solid var(--ink);
+  border-radius: 6px;
+}
+
+.oledEmpty {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.58);
+  font-weight: 900;
+}
+
+@media (max-width: 980px) {
+  body {
+    min-width: 0;
+  }
+
+  .shell {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+
+  .topbar {
+    flex-direction: column;
+  }
+
+  .modeDock,
+  .keyTray {
+    grid-template-columns: 1fr;
+  }
+
+  .keyboardBody {
+    width: 100%;
+    min-height: 560px;
+    aspect-ratio: auto;
+  }
+
+  .lightBar {
+    left: 8%;
+    right: 8%;
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .oledWindow {
+    top: 150px;
+    left: 8%;
+    right: 8%;
+    width: auto;
+  }
+}

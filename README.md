@@ -100,6 +100,61 @@ New contributors:
 - `platforms/macos/client/README.md`
 - `platforms/windows/README.md`
 
+## Lightweight Web Studio branch
+
+This branch also contains an in-progress lightweight rewrite for fast AhaKey
+key-remap iteration without launching the full macOS Studio UI.
+
+Primary pieces:
+
+- `web/` — Vite + React profile editor at `http://127.0.0.1:5174`.
+- `platforms/macos/Sources/AhaKeyDaemon/` — loopback daemon on
+  `127.0.0.1:17342` with profile validation, CORS/token checks, hardware apply,
+  and terminal approval relay.
+- `platforms/macos/Sources/WebBridgeHelper/` — one-shot BLE helper used by the
+  daemon to write shortcuts to the connected AhaKey device.
+- `platforms/macos/Sources/AhaKeyCore/` — shared profile schema, validator,
+  command planner, and trust policy.
+
+Current tested Mode 0 mapping:
+
+- Key 1: Right Command (`0xE7`) for Doubao binding.
+- Key 2: F19 trigger. The daemon swallows it and injects approval actions:
+  single press = `Enter`; double press within 280 ms = `Down, Enter`
+  for bypass / allow all.
+- Key 3: F20 trigger. The daemon swallows it and injects `Down, Down, Enter`
+  for deny / no.
+- Key 4: Enter (`0x28`).
+
+Run locally:
+
+```sh
+cd platforms/macos
+swift build
+.build/debug/ahakeyd \
+  --serve \
+  --port 17342 \
+  --token local-test-token \
+  --profile-root "$HOME/Library/Application Support/AhaKey/profiles"
+
+cd ../../web
+npm install
+VITE_AHAKEYD_TOKEN=local-test-token \
+VITE_AHAKEY_DAEMON_URL=http://127.0.0.1:17342 \
+npm run dev -- --host 127.0.0.1 --port 5174
+```
+
+The approval relay needs macOS Accessibility, Input Monitoring, and event-post
+permissions for the daemon process. `GET /api/status` exposes
+`approvalRelay.ready`, blockers, trigger keys, and the last relay action.
+
+Before claiming a change works, run:
+
+```sh
+cd web && npm run build
+cd ../platforms/macos && swift build
+```
+
 ---
 
 <a id="简体中文"></a>
@@ -164,3 +219,56 @@ desktop/
 - `platforms/macos/README.md`
 - `platforms/macos/client/README.md`
 - `platforms/windows/README.md`
+
+## Lightweight Web Studio 分支说明
+
+这个分支还包含一个进行中的轻量重写，用来快速迭代 AhaKey 键位映射，不必启动完整 macOS Studio UI。
+
+主要组成：
+
+- `web/` — Vite + React Profile 编辑器，默认打开
+  `http://127.0.0.1:5174`。
+- `platforms/macos/Sources/AhaKeyDaemon/` — 本机 loopback daemon，
+  监听 `127.0.0.1:17342`，负责 profile 校验、CORS/token 校验、写硬件、
+  以及终端 approve/deny 中继。
+- `platforms/macos/Sources/WebBridgeHelper/` — daemon 调用的一次性 BLE helper，
+  用来把快捷键写入已连接的 AhaKey 设备。
+- `platforms/macos/Sources/AhaKeyCore/` — profile schema、validator、命令规划和
+  trust policy。
+
+当前已测试的 Mode 0 映射：
+
+- Key 1：Right Command (`0xE7`)，用于豆包绑定。
+- Key 2：F19 触发键。daemon 会吞掉它并注入终端审批动作：
+  单击 = `Enter`；280 ms 内双击 = `Down, Enter`，用于 bypass / allow all。
+- Key 3：F20 触发键。daemon 会吞掉它并注入 `Down, Down, Enter`，用于 deny / no。
+- Key 4：Enter (`0x28`)。
+
+本地启动：
+
+```sh
+cd platforms/macos
+swift build
+.build/debug/ahakeyd \
+  --serve \
+  --port 17342 \
+  --token local-test-token \
+  --profile-root "$HOME/Library/Application Support/AhaKey/profiles"
+
+cd ../../web
+npm install
+VITE_AHAKEYD_TOKEN=local-test-token \
+VITE_AHAKEY_DAEMON_URL=http://127.0.0.1:17342 \
+npm run dev -- --host 127.0.0.1 --port 5174
+```
+
+终端审批中继需要给 daemon 进程 macOS「辅助功能」「输入监控」和事件发送权限。
+`GET /api/status` 会返回 `approvalRelay.ready`、权限 blocker、触发键和上一次
+中继动作。
+
+提交前至少跑：
+
+```sh
+cd web && npm run build
+cd ../platforms/macos && swift build
+```

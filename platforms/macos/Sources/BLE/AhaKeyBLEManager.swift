@@ -88,7 +88,7 @@ final class AhaKeyBLEManager: NSObject, ObservableObject {
 
     // MARK: - Private
 
-    private var central: CBCentralManager!
+    private var central: CBCentralManager?
     private var peripheral: CBPeripheral?
     private var dataChar: CBCharacteristic?
     private var commandChar: CBCharacteristic?
@@ -127,9 +127,10 @@ final class AhaKeyBLEManager: NSObject, ObservableObject {
         if storedOwner == nil || storedOwner == BluetoothConnectionOwner.agentDaemon.rawValue {
             suppressAutomaticConnection = true
         }
-        central = CBCentralManager(delegate: nil, queue: nil)
-        central.delegate = self
         startAutoReconnectPolling()
+        appendLog(
+            "Bundle: id=\(Bundle.main.bundleIdentifier ?? "nil") bluetoothAlways=\(Bundle.main.object(forInfoDictionaryKey: "NSBluetoothAlwaysUsageDescription") as? String ?? "nil") bluetoothPeripheral=\(Bundle.main.object(forInfoDictionaryKey: "NSBluetoothPeripheralUsageDescription") as? String ?? "nil")"
+        )
     }
 
     // MARK: - Public API
@@ -146,11 +147,18 @@ final class AhaKeyBLEManager: NSObject, ObservableObject {
     }
 
     func connectAutomatically() {
-        guard !suppressAutomaticConnection else { return }
+        ensureCentralManager()
+        guard let central else { return }
+        guard !suppressAutomaticConnection else {
+            appendLog("自动连接被 Agent 占用方抑制")
+            return
+        }
         guard central.state == .poweredOn else {
+            appendLog("蓝牙尚未就绪，等待状态回调: state=\(central.state.rawValue) auth=\(CBManager.authorization.rawValue)")
             pendingConnect = true
             return
         }
+        appendLog("自动连接开始: state=\(central.state.rawValue) auth=\(CBManager.authorization.rawValue)")
 
         // 1. 用已知 UUID 直连（最快）
         if let uuid = lastPeripheralUUID {
@@ -181,6 +189,8 @@ final class AhaKeyBLEManager: NSObject, ObservableObject {
     }
 
     func startScan() {
+        ensureCentralManager()
+        guard let central else { return }
         guard central.state == .poweredOn else {
             pendingConnect = true
             return
@@ -196,7 +206,7 @@ final class AhaKeyBLEManager: NSObject, ObservableObject {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: UInt64(Double(10) * 1_000_000_000))
             if self.isScanning {
-                self.central.stopScan()
+                self.central?.stopScan()
                 self.isScanning = false
                 self.bleConnectionStatus = "等待设备"
                 self.appendLog("扫描超时，继续后台轮询设备")
@@ -206,7 +216,7 @@ final class AhaKeyBLEManager: NSObject, ObservableObject {
 
     func disconnect() {
         guard let peripheral else { return }
-        central.cancelPeripheralConnection(peripheral)
+        central?.cancelPeripheralConnection(peripheral)
         appendLog("用户主动断开")
     }
 
@@ -457,13 +467,20 @@ final class AhaKeyBLEManager: NSObject, ObservableObject {
         autoReconnectTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                guard self.central.state == .poweredOn else { return }
+                self.ensureCentralManager()
+                guard self.central?.state == .poweredOn else { return }
                 guard !self.isConnected, !self.isScanning else { return }
                 guard self.bleConnectionStatus != "连接中…" else { return }
                 self.appendLog("后台轮询中，尝试寻找设备…")
                 self.connectAutomatically()
             }
         }
+    }
+
+    private func ensureCentralManager() {
+        guard central == nil else { return }
+        appendLog("初始化 CBCentralManager")
+        central = CBCentralManager(delegate: self, queue: nil)
     }
 
     private func stopRSSIPolling() {
@@ -718,6 +735,7 @@ extension AhaKeyBLEManager: CBCentralManagerDelegate {
                 self.appendLog("蓝牙已关闭", isError: true)
                 self.bleConnectionStatus = "蓝牙关闭"
             default:
+                self.appendLog("蓝牙状态更新: state=\(central.state.rawValue) auth=\(CBManager.authorization.rawValue)")
                 break
             }
         }
@@ -734,11 +752,11 @@ extension AhaKeyBLEManager: CBCentralManagerDelegate {
 
         Task { @MainActor in
             self.appendLog("发现设备: \(name) RSSI=\(RSSI)")
-            self.central.stopScan()
+            self.central?.stopScan()
             self.isScanning = false
             self.peripheral = peripheral
             peripheral.delegate = self
-            self.central.connect(peripheral, options: nil)
+            self.central?.connect(peripheral, options: nil)
             self.bleConnectionStatus = "连接中…"
         }
     }

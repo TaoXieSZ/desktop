@@ -6,10 +6,14 @@
 	<string>lab.jawa.ahakeyconfig</string>
 	<key>CFBundleDisplayName</key>
 	<string>AhaKey Studio</string>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>AhaKey 配置需要蓝牙连接你的 AhaKey 键盘。</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>AhaKey Studio 需要访问麦克风，才能使用苹果原生语音转写。</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>AhaKey 配置需要蓝牙连接你的 AhaKey 键盘。</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>AhaKey 配置需要蓝牙连接你的 AhaKey 键盘。</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>AhaKey Studio 需要访问麦克风，才能使用苹果原生语音转写。</string>
+    <key>NSInputMonitoringUsageDescription</key>
+    <string>AhaKey Studio 需要监听实体语音键，才能把 AhaKey 按键转换成语音输入快捷键。</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>AhaKey Studio 需要语音识别权限，才能把语音键转换成苹果原生转写。</string>
 </dict>

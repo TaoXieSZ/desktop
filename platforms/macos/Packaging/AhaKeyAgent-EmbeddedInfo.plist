@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>lab.jawa.ahakeyconfig.agent</string>
+	<key>CFBundleDisplayName</key>
+	<string>ahakeyconfig-agent</string>
+	<key>CFBundleName</key>
+	<string>ahakeyconfig-agent</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>AhaKey Agent 需要蓝牙连接你的 AhaKey 键盘。</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>AhaKey Agent 需要蓝牙连接你的 AhaKey 键盘。</string>
+</dict>
+</plist>

@@ -128,11 +128,11 @@ final class VoiceRelayService: ObservableObject {
             let followUpDelay: TimeInterval = 0.85
             DispatchQueue.main.asyncAfter(deadline: .now() + firstDelay) { [weak self] in
                 guard let self else { return }
-                self.performPermissionRead(requestIfNeeded: false, preferRequestAPI: true)
+                self.performPermissionRead(requestIfNeeded: false)
                 DispatchQueue.main.asyncAfter(deadline: .now() + followUpDelay) { [weak self] in
                     guard let self else { return }
                     if !self.inputMonitoringGranted || !self.accessibilityGranted {
-                        self.performPermissionRead(requestIfNeeded: false, preferRequestAPI: true)
+                        self.performPermissionRead(requestIfNeeded: false)
                         self.appendDiagnostic("permissions follow-up recheck (after system settings)")
                     }
                 }
@@ -142,10 +142,10 @@ final class VoiceRelayService: ObservableObject {
         performPermissionRead(requestIfNeeded: false)
     }
 
-    private func performPermissionRead(requestIfNeeded: Bool, preferRequestAPI: Bool = false) {
+    private func performPermissionRead(requestIfNeeded: Bool) {
         let inputMonitoring: Bool
         let postEventAccess: Bool
-        if requestIfNeeded || preferRequestAPI {
+        if requestIfNeeded {
             // Request 会走当前 TCC 判决；用户刚从「隐私与安全性」返回时，Preflight 有时仍短暂为 false。
             inputMonitoring = CGRequestListenEventAccess()
             postEventAccess = CGRequestPostEventAccess()
@@ -586,11 +586,13 @@ final class VoiceRelayService: ObservableObject {
             .functionRelay(appName: "Typeless / Fn")
         case .wechat:
             .functionRelay(appName: "微信语音")
+        case .doubao:
+            .functionRelay(appName: "豆包输入法")
         case .claudeCode:
             // Claude Code preset 复用 macOS 原生 ASR：录音 → 识别 → ⌘V 粘到当前光标。
             // 这样按键会被我们的 monitor 吃掉，不会漏到 Claude CLI 终端里变成 CSI 乱码。
             .macOSDictation
-        case .codex, .doubao, .custom:
+        case .codex, .custom:
             nil
         }
     }
