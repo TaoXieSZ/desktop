@@ -19,6 +19,8 @@ enum HookClient {
     private enum EventMode {
         /// 只发 `cmd: state`（无关批准）。
         case fireAndForgetState(UInt8)
+        /// Claude：发状态 + 推 Claude OLED HUD（当前事件/工具/权限态）。
+        case claudeState(UInt8)
         /// Claude：`PermissionRequest` → `hookSpecificOutput` + 拨杆。
         case claudePermissionRequest
         /// Cursor：从 stdin 读 JSON，stdout 回 `permission` 字段 + 拨杆。
@@ -30,15 +32,15 @@ enum HookClient {
     }
 
     private static let eventMap: [String: EventMode] = [
-        "Notification": .fireAndForgetState(0),
+        "Notification": .claudeState(0),
         "PermissionRequest": .claudePermissionRequest,
-        "PostToolUse": .fireAndForgetState(2),
-        "PreToolUse": .fireAndForgetState(3),
-        "SessionStart": .fireAndForgetState(4),
-        "Stop": .fireAndForgetState(5),
-        "TaskCompleted": .fireAndForgetState(6),
-        "UserPromptSubmit": .fireAndForgetState(7),
-        "SessionEnd": .fireAndForgetState(8),
+        "PostToolUse": .claudeState(2),
+        "PreToolUse": .claudeState(3),
+        "SessionStart": .claudeState(4),
+        "Stop": .claudeState(5),
+        "TaskCompleted": .claudeState(6),
+        "UserPromptSubmit": .claudeState(7),
+        "SessionEnd": .claudeState(8),
 
         "sessionStart": .fireAndForgetState(4),
         "sessionEnd": .fireAndForgetState(8),
@@ -84,6 +86,8 @@ enum HookClient {
         switch mode {
         case .fireAndForgetState(let v):
             handleFireAndForgetState(stateValue: v)
+        case .claudeState(let v):
+            handleClaudeState(event: event, stateValue: v)
         case .claudePermissionRequest:
             handleClaudePermissionRequest()
         case .cursorToolPermission:
@@ -101,6 +105,20 @@ enum HookClient {
     private static func handleFireAndForgetState(stateValue: UInt8) {
         let request: [String: Any] = ["cmd": "state", "value": Int(stateValue)]
         _ = sendJsonRequest(request, timeout: stateRequestTimeout)
+    }
+
+    /// Claude 状态事件：发 LED 状态 + 推 Claude OLED HUD（当前事件/工具/权限态/项目）。
+    private static func handleClaudeState(event: String, stateValue: UInt8) {
+        let stdinData = readAllStdinSilently()
+        let request: [String: Any] = ["cmd": "state", "value": Int(stateValue)]
+        _ = sendJsonRequest(request, timeout: stateRequestTimeout)
+        sendClaudeOLEDStatus(stdinData: stdinData, event: event)
+    }
+
+    @discardableResult
+    private static func sendClaudeOLEDStatus(stdinData: Data, event: String) -> [String: Any]? {
+        let status = ClaudeOLEDStatus.fromHookStdin(stdinData, event: event)
+        return sendJsonRequest(status.socketPayload(), timeout: oledStatusRequestTimeout)
     }
 
     private static func handleCodexState(stateValue: UInt8) {
@@ -129,6 +147,7 @@ enum HookClient {
         let ctx = parseStdinContext(stdinData, label: "Claude")
         let request: [String: Any] = ["cmd": "permission", "value": Int(permissionLedValue)]
         let reply = sendJsonRequest(request, timeout: permissionRequestTimeout)
+        sendClaudeOLEDStatus(stdinData: stdinData, event: "PermissionRequest")
         let switchState = intValue(reply?["switchState"])
         let isAuto = switchState == 0
         let behavior: String

@@ -8,8 +8,13 @@ struct CodexOLEDStatus: Equatable {
     var turnTokens: Int?
     var event: String?
     var mode: UInt8
+    /// 若非空，直接用这些行渲染（供 Claude HUD 等复用同一条上传链，绕过 Codex 专属的 model/token 格式）。
+    var overrideLines: [String]? = nil
 
     var displayLines: [String] {
+        if let overrideLines, !overrideLines.isEmpty {
+            return overrideLines.prefix(3).map { Self.truncateASCII($0, maxLength: 22) }
+        }
         let modelText: String
         switch (Self.clean(model), Self.clean(reasoning)) {
         case let (m?, r?):
@@ -65,7 +70,8 @@ struct CodexOLEDStatus: Equatable {
             contextLeftPercent: intValue(obj["contextLeftPercent"]),
             turnTokens: intValue(obj["turnTokens"]),
             event: obj["event"] as? String,
-            mode: UInt8(clamping: intValue(obj["mode"]) ?? 2)
+            mode: UInt8(clamping: intValue(obj["mode"]) ?? 2),
+            overrideLines: (obj["lines"] as? [String]).flatMap { $0.isEmpty ? nil : $0 }
         )
     }
 

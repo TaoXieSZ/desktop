@@ -266,7 +266,8 @@ final class AhaKeyAgent: NSObject, @unchecked Sendable, CBCentralManagerDelegate
                 }
             }
 
-        case "codexOledStatus":
+        case "codexOledStatus", "claudeOledStatus":
+            // 两条 agent HUD 走同一渲染/上传链；claude 通过 overrideLines 传任意行。
             let result = enqueueCodexOLEDStatus(CodexOLEDStatus.fromSocketObject(obj))
             Self.replyAndClose(clientFd, result)
 
