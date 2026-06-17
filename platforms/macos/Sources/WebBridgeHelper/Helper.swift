@@ -2,7 +2,7 @@
 import Darwin
 import Foundation
 
-private enum HelperError: Error, LocalizedError {
+enum HelperError: Error, LocalizedError {
     case invalidCommand(String)
     case missingValue(String)
     case invalidValue(String)
@@ -45,6 +45,10 @@ private struct HelperInput {
     var keyIndex: Int?
     var hidCodes: [UInt8] = []
     var label: String?
+    var gifPath: String?
+    var fps: Int = 8
+    var maxFrames: Int?
+    var startIndex: Int = 0
 }
 
 @main
@@ -57,6 +61,8 @@ struct AhaKeyWebBridgeHelper {
                 try runStatus(input)
             case "apply-shortcut":
                 try runApplyShortcut(input)
+            case "upload-oled":
+                try runUploadOLED(input)
             default:
                 throw HelperError.invalidCommand(input.command)
             }
@@ -141,6 +147,32 @@ struct AhaKeyWebBridgeHelper {
         ])
     }
 
+    private static func runUploadOLED(_ input: HelperInput) throws {
+        guard let modeInt = input.mode, (0...2).contains(modeInt) else { throw HelperError.invalidValue("mode must be 0...2") }
+        guard let gifPath = input.gifPath else { throw HelperError.missingValue("gif") }
+        let url = URL(fileURLWithPath: gifPath)
+        let frames = try OLEDUploadEncoder.frames(fromGIFAt: url, mode: modeInt, maxFrames: input.maxFrames)
+
+        if input.dryRun {
+            writeJSON(["ok": true, "dryRun": true, "connected": false, "frames": frames.count,
+                       "bytesPerFrame": frames.first?.count ?? 0, "mode": modeInt])
+            return
+        }
+
+        acquireWebEditOwnership()
+        var didRestoreAgent = false
+        defer { if !didRestoreAgent { _ = restoreAgentOwnership() } }
+
+        let client = HelperBLEClient()
+        try client.uploadOLED(frames: frames, fps: input.fps, mode: UInt8(modeInt), startIndex: UInt16(input.startIndex))
+        let returnResult = restoreAgentOwnership()
+        didRestoreAgent = true
+
+        writeJSON(["ok": true, "dryRun": false, "connected": true, "mode": modeInt,
+                   "frames": frames.count, "fps": input.fps, "startIndex": input.startIndex,
+                   "returnedToAgent": returnResult.ok, "hardwareMutated": true])
+    }
+
     private static func parseInput(_ args: [String]) throws -> HelperInput {
         guard let command = args.first else { throw HelperError.missingValue("command") }
         var input = HelperInput(command: command)
@@ -159,6 +191,14 @@ struct AhaKeyWebBridgeHelper {
                 input.hidCodes = try hidCodesArg(args, index: &index)
             case "--label":
                 input.label = try stringArg(args, index: &index, name: "label")
+            case "--gif":
+                input.gifPath = try stringArg(args, index: &index, name: "gif")
+            case "--fps":
+                input.fps = try intArg(args, index: &index, name: "fps")
+            case "--max-frames":
+                input.maxFrames = try intArg(args, index: &index, name: "max-frames")
+            case "--start-index":
+                input.startIndex = try intArg(args, index: &index, name: "start-index")
             default:
                 throw HelperError.invalidValue(arg)
             }
@@ -272,10 +312,11 @@ struct AhaKeyWebBridgeHelper {
     }
 }
 
-private enum AhaKeyPacket {
+enum AhaKeyPacket {
     static let header: [UInt8] = [0xAA, 0xBB]
     static let trailer: [UInt8] = [0xCC, 0xDD]
     static let serviceUUID = CBUUID(string: "7340")
+    static let dataCharUUID = CBUUID(string: "7341")
     static let commandCharUUID = CBUUID(string: "7343")
     static let notifyCharUUID = CBUUID(string: "7344")
     static let deviceNamePrefix = "vibe code"
@@ -285,8 +326,46 @@ private enum AhaKeyPacket {
     static let subMacro: UInt8 = 0x74
     static let subDescription: UInt8 = 0x75
 
+    // OLED upload (mirrors AhaKeyConfig/AhaKeyProtocol)
+    static let cmdPrepareWrite: UInt8 = 0x80
+    static let cmdWriteResult: UInt8 = 0x81
+    static let cmdUpdatePic: UInt8 = 0x82
+    static let oledWidth = 160
+    static let oledHeight = 80
+    static let oledFrameSlotSize = 28_672
+    static let oledMaxFrames = 74
+    static let oledChunkSize = 4096
+    static let oledPacketSize = 180
+
     static func queryDeviceStatus() -> Data {
         Data(header + [0x00] + trailer)
+    }
+
+    static func prepareWrite(flag: UInt8 = 0x00, chunkLength: Int, address: UInt32) -> Data {
+        let payload: [UInt8] = [
+            flag,
+            UInt8(chunkLength & 0xFF), UInt8((chunkLength >> 8) & 0xFF),
+            UInt8(address & 0xFF), UInt8((address >> 8) & 0xFF),
+            UInt8((address >> 16) & 0xFF), UInt8((address >> 24) & 0xFF),
+        ]
+        return Data(header + [cmdPrepareWrite] + payload + trailer)
+    }
+
+    static func updatePicture(mode: UInt8, startIndex: UInt16, frameCount: UInt16, timeDelayMs: UInt16) -> Data {
+        let payload: [UInt8] = [
+            mode,
+            UInt8(startIndex & 0xFF), UInt8((startIndex >> 8) & 0xFF),
+            UInt8(frameCount & 0xFF), UInt8((frameCount >> 8) & 0xFF),
+            UInt8(timeDelayMs & 0xFF), UInt8((timeDelayMs >> 8) & 0xFF),
+        ]
+        return Data(header + [cmdUpdatePic] + payload + trailer)
+    }
+
+    /// ack 帧 `AA BB [cmd] [status] [payload] CC DD`，status==0 表示成功。
+    static func parseCommandResponse(_ data: Data) -> (cmd: UInt8, status: UInt8)? {
+        guard data.count >= 6, data[0] == 0xAA, data[1] == 0xBB,
+              data[data.count - 2] == 0xCC, data[data.count - 1] == 0xDD else { return nil }
+        return (data[2], data[3])
     }
 
     static func saveConfig() -> Data {
@@ -312,6 +391,9 @@ private final class HelperBLEClient: NSObject, @unchecked Sendable, CBCentralMan
     private var peripheral: CBPeripheral?
     private var commandChar: CBCharacteristic?
     private var notifyChar: CBCharacteristic?
+    private var dataChar: CBCharacteristic?
+    private let ackSem = DispatchSemaphore(value: 0)
+    private var lastAck: (cmd: UInt8, status: UInt8)?
     private let stateSem = DispatchSemaphore(value: 0)
     private let foundSem = DispatchSemaphore(value: 0)
     private let connectedSem = DispatchSemaphore(value: 0)
@@ -343,6 +425,61 @@ private final class HelperBLEClient: NSObject, @unchecked Sendable, CBCentralMan
         }
     }
 
+    func uploadOLED(frames: [Data], fps: Int, mode: UInt8, startIndex: UInt16) throws {
+        try connect()
+        guard let peripheral, dataChar != nil else { throw HelperError.characteristicUnavailable }
+        let dch = dataChar!
+        let writeType: CBCharacteristicWriteType = dch.properties.contains(.write) ? .withResponse : .withoutResponse
+        let subSize = min(max(1, peripheral.maximumWriteValueLength(for: writeType)), AhaKeyPacket.oledPacketSize)
+
+        for (i, frame) in frames.enumerated() {
+            let frameAddr = UInt32(Int(startIndex) + i) * UInt32(AhaKeyPacket.oledFrameSlotSize)
+            var off = 0
+            while off < frame.count {
+                let end = min(off + AhaKeyPacket.oledChunkSize, frame.count)
+                let chunk = Data(frame[off ..< end])
+                try sendAwaitingAck(AhaKeyPacket.prepareWrite(chunkLength: chunk.count, address: frameAddr + UInt32(off)),
+                                    expect: AhaKeyPacket.cmdPrepareWrite)
+                var p = 0
+                while p < chunk.count {
+                    let e = min(p + subSize, chunk.count)
+                    peripheral.writeValue(Data(chunk[p ..< e]), for: dch, type: writeType)
+                    Thread.sleep(forTimeInterval: 0.012)
+                    p = e
+                }
+                try waitAck(expect: AhaKeyPacket.cmdWriteResult, timeout: 6)
+                off = end
+            }
+            FileHandle.standardError.write(Data("  frame \(i + 1)/\(frames.count) ok\n".utf8))
+        }
+        let delay = UInt16(max(1, 1000 / max(1, fps)))
+        try sendAwaitingAck(AhaKeyPacket.updatePicture(mode: mode, startIndex: startIndex,
+                                                       frameCount: UInt16(frames.count), timeDelayMs: delay),
+                            expect: AhaKeyPacket.cmdUpdatePic)
+    }
+
+    private func sendAwaitingAck(_ data: Data, expect: UInt8, timeout: Double = 5) throws {
+        while ackSem.wait(timeout: DispatchTime.now()) == .success {} // drain stale
+        lastAck = nil
+        write(data)
+        try waitAck(expect: expect, timeout: timeout)
+    }
+
+    private func waitAck(expect: UInt8, timeout: Double) throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while true {
+            let remaining = deadline.timeIntervalSinceNow
+            guard remaining > 0 else { break }
+            guard ackSem.wait(timeout: .now() + remaining) == .success else { break }
+            guard let ack = lastAck, ack.cmd == expect else { continue }
+            guard ack.status == 0 else {
+                throw HelperError.invalidValue("device rejected cmd 0x\(String(expect, radix: 16)) status \(ack.status)")
+            }
+            return
+        }
+        throw HelperError.invalidValue("timeout waiting ack 0x\(String(expect, radix: 16))")
+    }
+
     private func connect() throws {
         guard stateSem.wait(timeout: .now() + 10) == .success else {
             throw HelperError.bluetoothUnavailable("state timeout")
@@ -367,7 +504,9 @@ private final class HelperBLEClient: NSObject, @unchecked Sendable, CBCentralMan
             }
             return
         }
-        central.scanForPeripherals(withServices: [AhaKeyPacket.serviceUUID], options: nil)
+        // 设备广播包只含 1812(HID)/180F(电量),不含私有服务 7340 —— 7340 仅在连接后于 GATT 暴露。
+        // 因此扫描不能按 7340 过滤(会永远扫不到),改为全量扫描,由 didDiscover 的名字前缀("vibe code")筛选。
+        central.scanForPeripherals(withServices: nil, options: nil)
         guard foundSem.wait(timeout: .now() + 10) == .success, let peripheral else {
             central.stopScan()
             throw HelperError.deviceUnavailable
@@ -411,27 +550,38 @@ private final class HelperBLEClient: NSObject, @unchecked Sendable, CBCentralMan
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         guard let service = peripheral.services?.first(where: { $0.uuid == AhaKeyPacket.serviceUUID }) else { return }
         serviceSem.signal()
-        peripheral.discoverCharacteristics([AhaKeyPacket.commandCharUUID, AhaKeyPacket.notifyCharUUID], for: service)
+        peripheral.discoverCharacteristics([AhaKeyPacket.dataCharUUID, AhaKeyPacket.commandCharUUID, AhaKeyPacket.notifyCharUUID], for: service)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         for char in service.characteristics ?? [] {
-            if char.uuid == AhaKeyPacket.commandCharUUID {
+            switch char.uuid {
+            case AhaKeyPacket.commandCharUUID:
                 commandChar = char
-            } else if char.uuid == AhaKeyPacket.notifyCharUUID {
+            case AhaKeyPacket.notifyCharUUID:
                 notifyChar = char
                 peripheral.setNotifyValue(true, for: char)
+            case AhaKeyPacket.dataCharUUID:
+                dataChar = char
+                peripheral.setNotifyValue(true, for: char) // ack 帧(0x80/0x81/0x82)可能从数据特征回
+            default:
+                break
             }
         }
         charSem.signal()
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        guard characteristic.uuid == AhaKeyPacket.notifyCharUUID,
-              let data = characteristic.value,
-              let status = parseDeviceStatus(data) else { return }
-        latestStatus = status
-        statusSem.signal()
+        guard let data = characteristic.value else { return }
+        if let status = parseDeviceStatus(data) {
+            latestStatus = status
+            statusSem.signal()
+            return
+        }
+        if let ack = AhaKeyPacket.parseCommandResponse(data) {
+            lastAck = ack
+            ackSem.signal()
+        }
     }
 
     private func parseDeviceStatus(_ data: Data) -> [String: Any]? {
