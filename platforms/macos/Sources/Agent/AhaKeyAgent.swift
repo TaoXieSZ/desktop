@@ -72,6 +72,7 @@ final class AhaKeyAgent: NSObject, @unchecked Sendable, CBCentralManagerDelegate
     private let cmdPrepareWrite: UInt8 = 0x80
     private let cmdWriteResult: UInt8 = 0x81
     private let cmdUpdatePic: UInt8 = 0x82
+    private let cmdReadPicState: UInt8 = 0x83
     private let oledFrameSlotSize = 28_672
     private let oledChunkSize = 4096
     private let oledPacketSize = 180
@@ -98,6 +99,11 @@ final class AhaKeyAgent: NSObject, @unchecked Sendable, CBCentralManagerDelegate
     /// HUD 帧写入的保留槽（共享帧缓冲尾部）。模式图占 0..~35，HUD 放高位，
     /// 这样推 HUD 不会销毁模式图数据 —— 之后再 updatePicture 指回各自区间即可恢复，无需重传。
     private let oledHUDStartIndex: UInt16 = 73
+    /// 各模式图的原始槽位区间（HUD 覆盖前 readPicState 捕获一次）。空闲时据此把显示指回模式图。
+    private var oledModeImageRanges: [UInt8: (startIndex: UInt16, frameCount: UInt16)] = [:]
+    private var didCaptureModeImageRanges = false
+    /// 这些事件视为「空闲」：把 OLED 从 HUD 切回模式图（而不是渲染 HUD 文字）。
+    private let oledIdleEvents: Set<String> = ["Stop", "SessionEnd", "CodexStop"]
 
     var onLog: ((String) -> Void)?
 
@@ -354,10 +360,17 @@ final class AhaKeyAgent: NSObject, @unchecked Sendable, CBCentralManagerDelegate
         oledUploadTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let frame = AgentOLEDTextRenderer.render(lines: status.displayLines)
-                for mode in self.codexHUDModes {
-                    try Task.checkCancellation()
-                    try await self.uploadOLEDFrame(frame, mode: mode, startIndex: self.oledHUDStartIndex)
+                await self.captureImageRangesIfNeeded()
+                let isIdle = self.oledIdleEvents.contains(status.event ?? "")
+                if isIdle {
+                    // 空闲事件（Stop/SessionEnd）：把各档显示指回模式图，而不是渲染 HUD。
+                    try await self.restoreModeImages()
+                } else {
+                    let frame = AgentOLEDTextRenderer.render(lines: status.displayLines)
+                    for mode in self.codexHUDModes {
+                        try Task.checkCancellation()
+                        try await self.uploadOLEDFrame(frame, mode: mode, startIndex: self.oledHUDStartIndex)
+                    }
                 }
                 self.bleQueue.async {
                     guard self.oledUploadID == uploadID else { return }
@@ -366,7 +379,9 @@ final class AhaKeyAgent: NSObject, @unchecked Sendable, CBCentralManagerDelegate
                     self.lastOLEDDisplayKey = displayKey
                     self.lastOLEDUploadAt = Date()
                     self.isUploadingOLEDStatus = false
-                    self.emit("OLED Codex 状态已更新: modes=\(self.codexHUDModes.map(String.init).joined(separator: ",")) \(status.displayLines.joined(separator: " | "))")
+                    self.emit(isIdle
+                        ? "OLED 恢复模式图(空闲): \(status.event ?? "")"
+                        : "OLED HUD 已更新: modes=\(self.codexHUDModes.map(String.init).joined(separator: ",")) \(status.displayLines.joined(separator: " | "))")
                     self.scheduleOLEDStatusDrain()
                 }
             } catch {
@@ -402,6 +417,42 @@ final class AhaKeyAgent: NSObject, @unchecked Sendable, CBCentralManagerDelegate
 
         let update = makeUpdatePicture(mode: mode, startIndex: startIndex, frameCount: 1, timeDelayMs: 1000)
         _ = try await sendCommandAwaitingResponse(update, expectedCommand: cmdUpdatePic)
+    }
+
+    private func makeReadPicState(mode: UInt8) -> Data {
+        Data(header + [cmdReadPicState, mode] + trailer)
+    }
+
+    /// 读某模式当前图的槽位区间：响应 payload = [mode][startIndex:2][picLength:2][interval:2][maxPic:2]。
+    private func readPictureRange(mode: UInt8) async throws -> (startIndex: UInt16, frameCount: UInt16) {
+        let resp = try await sendCommandAwaitingResponse(makeReadPicState(mode: mode), expectedCommand: cmdReadPicState)
+        let p = resp.payload
+        guard p.count >= 5 else { throw AgentOLEDUploadError.channelNotReady }
+        let startIndex = UInt16(p[0 + 1]) | (UInt16(p[0 + 2]) << 8)
+        let frameCount = UInt16(p[0 + 3]) | (UInt16(p[0 + 4]) << 8)
+        return (startIndex, frameCount)
+    }
+
+    /// HUD 首次覆盖前，捕获各模式图的原始区间（一次）。已是 HUD 槽(73)或空图的不缓存。
+    private func captureImageRangesIfNeeded() async {
+        guard !didCaptureModeImageRanges else { return }
+        for mode in codexHUDModes {
+            if let range = try? await readPictureRange(mode: mode),
+               range.frameCount > 0, range.startIndex != oledHUDStartIndex {
+                oledModeImageRanges[mode] = range
+            }
+        }
+        didCaptureModeImageRanges = true
+        emit("OLED 模式图区间已记录: \(oledModeImageRanges.map { "m\($0)=\($1.startIndex)+\($1.frameCount)" }.joined(separator: ", "))")
+    }
+
+    /// 空闲时把各模式显示指回其图区间（无需重传数据，HUD 写的是保留槽）。
+    private func restoreModeImages() async throws {
+        for mode in codexHUDModes {
+            guard let range = oledModeImageRanges[mode] else { continue }
+            let update = makeUpdatePicture(mode: mode, startIndex: range.startIndex, frameCount: range.frameCount, timeDelayMs: 1000)
+            _ = try await sendCommandAwaitingResponse(update, expectedCommand: cmdUpdatePic)
+        }
     }
 
     private func sendCommandAwaitingResponse(_ data: Data, expectedCommand: UInt8, timeoutSeconds: Double = 5.0) async throws -> AgentCommandResponse {
