@@ -525,8 +525,10 @@ final class AhaKeyAgent: NSObject, @unchecked Sendable, CBCentralManagerDelegate
         }
 
         // 3. 扫描
+        // 设备广播包只含 1812(HID)/180F(电量)，不含私有服务 7340 —— 按 7340 过滤会永远扫不到。
+        // 改为全量扫描，由 didDiscover 的名字前缀("vibe code")筛选。
         emit("开始扫描…")
-        central.scanForPeripherals(withServices: [serviceUUID], options: nil)
+        central.scanForPeripherals(withServices: nil, options: nil)
     }
 
     private func emit(_ msg: String) {
