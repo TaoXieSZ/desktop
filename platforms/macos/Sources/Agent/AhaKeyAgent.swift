@@ -95,6 +95,9 @@ final class AhaKeyAgent: NSObject, @unchecked Sendable, CBCentralManagerDelegate
     private var lastOLEDUploadAt: Date?
     private let minOLEDUploadInterval: TimeInterval = 2.0
     private let codexHUDModes: [UInt8] = [0, 1, 2]
+    /// HUD 帧写入的保留槽（共享帧缓冲尾部）。模式图占 0..~35，HUD 放高位，
+    /// 这样推 HUD 不会销毁模式图数据 —— 之后再 updatePicture 指回各自区间即可恢复，无需重传。
+    private let oledHUDStartIndex: UInt16 = 73
 
     var onLog: ((String) -> Void)?
 
@@ -354,7 +357,7 @@ final class AhaKeyAgent: NSObject, @unchecked Sendable, CBCentralManagerDelegate
                 let frame = AgentOLEDTextRenderer.render(lines: status.displayLines)
                 for mode in self.codexHUDModes {
                     try Task.checkCancellation()
-                    try await self.uploadOLEDFrame(frame, mode: mode, startIndex: 0)
+                    try await self.uploadOLEDFrame(frame, mode: mode, startIndex: self.oledHUDStartIndex)
                 }
                 self.bleQueue.async {
                     guard self.oledUploadID == uploadID else { return }

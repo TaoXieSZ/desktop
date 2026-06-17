@@ -12,6 +12,8 @@ final class CodexOLEDStatusFileBridge {
     private var isUploading = false
     private var pending: Payload?
     private let codexHUDModes: [UInt8] = [0, 1, 2]
+    /// HUD 帧写入的保留槽（共享帧缓冲尾部，模式图占 0..~35）。
+    static let oledHUDStartIndex: UInt16 = 73
     var onPayloadLinesChanged: (([String]) -> Void)?
 
     private struct Payload {
@@ -125,7 +127,8 @@ final class CodexOLEDStatusFileBridge {
                         [frame],
                         fps: 1,
                         mode: mode,
-                        startIndex: 0
+                        // 写入保留槽，避免销毁模式图数据（模式图占 0..~35，HUD 放高位）。
+                        startIndex: Self.oledHUDStartIndex
                     )
                 }
                 lastDisplayKey = payload.displayKey
