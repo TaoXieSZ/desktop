@@ -276,9 +276,10 @@ final class AhaKeyAgent: NSObject, @unchecked Sendable, CBCentralManagerDelegate
             }
 
         case "codexOledStatus", "claudeOledStatus":
-            // 两条 agent HUD 走同一渲染/上传链；claude 通过 overrideLines 传任意行。
-            let result = enqueueCodexOLEDStatus(CodexOLEDStatus.fromSocketObject(obj))
-            Self.replyAndClose(clientFd, result)
+            // OLED-HUD 已停用：只保留门控(permission/status)+LED(state)，不再往 OLED 写 HUD 帧，
+            // 避免每个事件全量上传 25600 字节（"uploading pic" churn）和重启后指针卡在 HUD 槽。
+            // HUD 渲染/上传链（enqueueCodexOLEDStatus / drainOLEDStatusQueue）保留，便于将来按需重启用。
+            Self.replyAndClose(clientFd, ["ok": true, "queued": false, "skipped": true, "reason": "oled_hud_disabled"])
 
         default:
             Self.replyAndClose(clientFd, ["error": "unknown cmd: \(cmd)"])
