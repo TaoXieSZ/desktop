@@ -54,6 +54,27 @@ The terminal approval relay requires macOS Accessibility, Input Monitoring, and
 post-event permission for the daemon process. Check `approvalRelay` in
 `GET /api/status` before testing approval keys.
 
+## Shortcut capture
+
+In the profile editor, a Shortcut binding can be set two ways:
+
+- **预设快速选择** — the preset dropdown (Enter / Escape / Tab / … / F20).
+- **录入 (capture)** — click 录入, then press the physical key you want to bind,
+  optionally holding `⌘` / `⌃` / `⌥` / `⇧`. The press is recorded as USB HID
+  usage codes into `action.hidCodes` (modifiers first, then the key), previewed
+  as e.g. `⌘ + S · 0xe3 0x16`. `Esc` or clicking elsewhere cancels.
+
+`KeyboardEvent.code` (physical position) drives the mapping in `src/hidKeymap.ts`,
+so it is layout-independent. Codes are validated to `0…255` with at most
+`98` per binding (the firmware limit, mirroring `AhaKeyProfileValidator`).
+
+Caveats:
+- OS-level combos (`⌘Q`, `⌘Tab`, `⌘Space`) never reach the page and cannot be captured.
+- **Combo firmware semantics are unverified**: whether the device replays a
+  multi-byte `hidCodes` array as a simultaneous chord or a sequence must be
+  confirmed on hardware (dry-run `POST /api/apply` to inspect the command plan,
+  then write and observe). Single-key capture is unambiguous.
+
 ## Verification
 
 ```sh

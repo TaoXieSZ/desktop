@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { codeToHid, formatHidLabel, heldModifierUsages, isModifierCode } from './hidKeymap';
 
 const DAEMON_BASE = import.meta.env.VITE_AHAKEY_DAEMON_URL ?? 'http://127.0.0.1:17342';
 const TOKEN_STORAGE_KEY = 'ahakeyd-token';
+const MAX_HID_CODES = 98; // firmware limit, mirrors WebBridgeHelper.validate / AhaKeyProfileValidator
 
 type ShortcutAction = { type: 'shortcut'; hidCodes: number[] };
 type RelayAction = { type: 'relay'; kind: 'fnGlobe' };
@@ -80,7 +82,8 @@ function defaultProfile(): AhaKeyProfile {
 }
 
 function App() {
-  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY) ?? import.meta.env.VITE_AHAKEYD_TOKEN ?? '');
+  // Use || (not ??) so a stale EMPTY localStorage value still falls back to the env token.
+  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY) || import.meta.env.VITE_AHAKEYD_TOKEN || '');
   const [profile, setProfile] = useState<AhaKeyProfile>(() => defaultProfile());
   const [modeId, setModeId] = useState(0);
   const [keyIndex, setKeyIndex] = useState(0);
@@ -90,6 +93,8 @@ function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [isWriting, setIsWriting] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [captureError, setCaptureError] = useState('');
 
   const selectedMode = useMemo(
     () => profile.modes.find((mode) => mode.id === modeId) ?? profile.modes[0],
@@ -100,6 +105,14 @@ function App() {
     [selectedMode, keyIndex],
   );
   const validationErrors = useMemo(() => validateProfile(profile), [profile]);
+
+  // Selecting a different key/mode exits any in-progress capture.
+  useEffect(() => {
+    setCapturing(false);
+    setCaptureError('');
+  }, [modeId, keyIndex]);
+
+  const shortcutCodes: number[] = selectedKey.action.type === 'shortcut' ? selectedKey.action.hidCodes : [];
 
   useEffect(() => {
     localStorage.setItem(TOKEN_STORAGE_KEY, token);
@@ -136,6 +149,44 @@ function App() {
         ? { ...mode, keys: mode.keys.map((key) => key.index === keyIndex ? { ...key, ...next } : key) }
         : mode),
     }));
+  }
+
+  function startCapture() {
+    setCaptureError('');
+    setCapturing(true);
+  }
+
+  function cancelCapture() {
+    setCapturing(false);
+  }
+
+  // Records a single chord: held modifiers (Ctrl/Shift/Alt/GUI, deterministic order) + the pressed key.
+  // Suppresses the default action so the page/OS does not react to the captured key while recording.
+  function onCaptureKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.code === 'Escape') {
+      setCapturing(false);
+      return;
+    }
+    // Wait for a non-modifier key so a bare Cmd/Shift hold doesn't prematurely commit.
+    if (isModifierCode(event.code) && !event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
+      // bare modifier press: fall through to record just that modifier
+    }
+    const keyHid = codeToHid(event.code);
+    if (keyHid === null) {
+      setCaptureError(`不支持的按键：${event.code}`);
+      return;
+    }
+    const modifiers = isModifierCode(event.code) ? [] : heldModifierUsages(event);
+    const hidCodes = [...modifiers, keyHid];
+    if (hidCodes.some((code) => code < 0 || code > 255) || hidCodes.length > MAX_HID_CODES) {
+      setCaptureError('录入结果超出固件允许范围');
+      return;
+    }
+    setCaptureError('');
+    setCapturing(false);
+    updateSelectedKey({ action: { type: 'shortcut', hidCodes } });
   }
 
   async function saveProfile() {
@@ -289,11 +340,14 @@ function App() {
             动作类型
             <select
               value={selectedKey.action.type}
-              onChange={(event) => updateSelectedKey({
-                action: event.target.value === 'relay'
-                  ? { type: 'relay', kind: 'fnGlobe' }
-                  : { type: 'shortcut', hidCodes: [0x28] },
-              })}
+              onChange={(event) => {
+                cancelCapture();
+                updateSelectedKey({
+                  action: event.target.value === 'relay'
+                    ? { type: 'relay', kind: 'fnGlobe' }
+                    : { type: 'shortcut', hidCodes: [0x28] },
+                });
+              }}
             >
               <option value="shortcut">Shortcut</option>
               <option value="relay">Fn/Globe relay</option>
@@ -301,20 +355,47 @@ function App() {
           </label>
 
           {selectedKey.action.type === 'shortcut' ? (
-            <label className="fieldGroup">
+            <div className="fieldGroup">
               快捷键
+              <div className="captureRow">
+                <code className="captureValue">
+                  {formatHidLabel(shortcutCodes)}
+                  <span className="captureHex"> · {shortcutCodes.map((c) => `0x${c.toString(16)}`).join(' ')}</span>
+                </code>
+                {capturing ? (
+                  <button type="button" className="secondaryButton" onClick={cancelCapture}>取消</button>
+                ) : (
+                  <button type="button" className="secondaryButton" onClick={startCapture}>录入</button>
+                )}
+              </div>
+              {capturing && (
+                <div
+                  className="captureTarget"
+                  tabIndex={0}
+                  ref={(el) => el?.focus()}
+                  role="textbox"
+                  aria-label="按下要绑定的按键"
+                  onKeyDown={onCaptureKeyDown}
+                  onBlur={cancelCapture}
+                >
+                  按下要绑定的键…（可带 ⌘/⌃/⌥/⇧，Esc 取消）
+                </div>
+              )}
+              {captureError && <div className="errorBox"><span>{captureError}</span></div>}
               <select
-                value={selectedKey.action.hidCodes.join(',')}
+                aria-label="快捷键预设"
+                value={shortcutOptions.find((item) => item.hidCodes.join(',') === shortcutCodes.join(',')) ? shortcutCodes.join(',') : ''}
                 onChange={(event) => {
-                  const next = shortcutOptions.find((item) => item.hidCodes.join(',') === event.target.value) ?? shortcutOptions[0];
-                  updateSelectedKey({ action: { type: 'shortcut', hidCodes: next.hidCodes } });
+                  const next = shortcutOptions.find((item) => item.hidCodes.join(',') === event.target.value);
+                  if (next) updateSelectedKey({ action: { type: 'shortcut', hidCodes: next.hidCodes } });
                 }}
               >
+                <option value="">— 预设快速选择 —</option>
                 {shortcutOptions.map((item) => (
                   <option key={item.label} value={item.hidCodes.join(',')}>{item.label}</option>
                 ))}
               </select>
-            </label>
+            </div>
           ) : (
             <div className="noticeBox">Fn/Globe 由 native daemon 中继，不作为普通 HID 写入固件。</div>
           )}
@@ -357,7 +438,7 @@ function App() {
 function actionLabel(action: KeyAction): string {
   if (action.type === 'relay') return 'Fn/Globe';
   const known = shortcutOptions.find((item) => item.hidCodes.join(',') === action.hidCodes.join(','));
-  return known?.label ?? action.hidCodes.map((code) => `0x${code.toString(16)}`).join(' + ');
+  return known?.label ?? formatHidLabel(action.hidCodes);
 }
 
 function validateProfile(profile: AhaKeyProfile): string[] {
@@ -374,6 +455,9 @@ function validateProfile(profile: AhaKeyProfile): string[] {
       if (!key.label.trim()) errors.push(`Mode ${mode.id} 按键 ${key.index + 1} 缺少标签`);
       if (key.action.type === 'shortcut' && key.action.hidCodes.some((code) => code < 0 || code > 255)) {
         errors.push(`Mode ${mode.id} 按键 ${key.index + 1} HID code 无效`);
+      }
+      if (key.action.type === 'shortcut' && key.action.hidCodes.length > MAX_HID_CODES) {
+        errors.push(`Mode ${mode.id} 按键 ${key.index + 1} HID code 数量超过固件上限 ${MAX_HID_CODES}`);
       }
     }
   }

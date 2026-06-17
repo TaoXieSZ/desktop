@@ -714,3 +714,44 @@ h2 {
     width: auto;
   }
 }
+
+/* Keyboard-capture shortcut field */
+.captureRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.captureValue {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 14px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.captureHex {
+  color: var(--muted);
+  font-size: 12px;
+}
+.captureTarget {
+  margin-top: 8px;
+  padding: 14px 12px;
+  border: 1px dashed var(--teal);
+  border-radius: 8px;
+  background: rgba(58, 166, 160, 0.08);
+  color: var(--teal);
+  font-size: 13px;
+  text-align: center;
+  cursor: text;
+  outline: none;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+.captureTarget:focus {
+  background: rgba(58, 166, 160, 0.16);
+  border-color: var(--grass);
+}
